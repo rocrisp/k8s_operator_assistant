@@ -1,4 +1,6 @@
 streamlit
 langchain
-transformers
+langchain_community
 faiss-cpu
+sentence-transformers
+chromadb

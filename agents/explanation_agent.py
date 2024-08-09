@@ -1,13 +1,11 @@
-import openai
+# Import the Ollama class from the langchain_community package    
+from langchain_community.llms import Ollama
 
 class ExplanationAgent:
-    def __init__(self, api_key):
-        openai.api_key = api_key
+    def __init__(self):
+        self.llm = Ollama(base_url="http://localhost:11434", model="autopilot")
 
     def get_response(self, query):
-        response = openai.Completion.create(
-            engine="davinci",
-            prompt=query,
-            max_tokens=150
-        )
-        return response.choices[0].text.strip()
+        response = self.llm.invoke(query)
+        return response
+

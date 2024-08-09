@@ -1,23 +1,38 @@
-import faiss
-import numpy as np
+from langchain_community.document_loaders import WebBaseLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain.embeddings import SentenceTransformerEmbeddings
+from langchain_community.vectorstores import Chroma
 
 class Retriever:
-    def __init__(self, documents):
-        self.documents = documents
-        self.index = self._build_index(documents)
+    def __init__(self, urls):
+        self.urls = urls
+        self.documents = self._load_documents_from_urls(urls)
+        self.splits = self._split_docs(self.documents)
+        self.embeddings = SentenceTransformerEmbeddings(model_name="all-MiniLM-L6-v2")
+        self.vectorstore = self._populate_vectorstore(self.splits)
+        #self.retriever = self.vectorstore.as_retriever()
 
-    def _build_index(self, documents):
-        dimension = 768  # Assume 768-dim embeddings
-        index = faiss.IndexFlatL2(dimension)
-        embeddings = [self._embed(doc) for doc in documents]
-        index.add(np.array(embeddings).astype('float32'))
-        return index
+    def _load_documents_from_urls(self, urls):
+        data = []
+        for url in urls:
+            loader = WebBaseLoader(url)
+            page = loader.load()
+            page[0].page_content = page[0].page_content.replace('\n', '')
+            data.extend(page)
+        return data
 
-    def _embed(self, document):
-        # Mock embedding function
-        return np.random.rand(768)
+    def _split_docs(self, data):
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=0)
+        return text_splitter.split_documents(data)
+
+    def _populate_vectorstore(self, splits):
+        vectorstore = Chroma.from_documents(
+            documents=splits,
+            collection_name="rag-chroma",
+            embedding=self.embeddings,
+        )
+        return vectorstore
 
     def retrieve(self, query, k=5):
-        query_embedding = self._embed(query)
-        distances, indices = self.index.search(np.array([query_embedding]).astype('float32'), k)
-        return [self.documents[idx] for idx in indices[0]]
+        results = self.vectorstore.similarity_search(query, k=k)
+        return "\n".join([result.page_content for result in results])

@@ -1,12 +1,10 @@
-from transformers import T5ForConditionalGeneration, T5Tokenizer
+# Import the Ollama class from the langchain_community package
+from langchain_community.llms import Ollama
 
 class TroubleshootingAgent:
     def __init__(self):
-        self.model = T5ForConditionalGeneration.from_pretrained('t5-base')
-        self.tokenizer = T5Tokenizer.from_pretrained('t5-base')
+        self.llm = Ollama(base_url="http://localhost:11434", model="autopilot")
 
     def get_response(self, query):
-        inputs = self.tokenizer.encode(f"troubleshoot: {query}", return_tensors='pt', max_length=512, truncation=True)
-        outputs = self.model.generate(inputs, max_length=150, num_beams=4, early_stopping=True)
-        response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+        response = self.llm.invoke(query)
         return response

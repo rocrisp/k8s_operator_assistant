@@ -1,12 +1,9 @@
-from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
-
+# Import the Ollama class from the langchain_community package
+from langchain_community.llms import Ollama
 class CodeSnippetAgent:
     def __init__(self):
-        self.model = AutoModelForSeq2SeqLM.from_pretrained('microsoft/codebert-base')
-        self.tokenizer = AutoTokenizer.from_pretrained('microsoft/codebert-base')
+        self.llm = Ollama(base_url="http://localhost:11434", model="autopilot")
 
     def get_response(self, query):
-        inputs = self.tokenizer.encode(query, return_tensors='pt')
-        outputs = self.model.generate(inputs)
-        response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+        response = self.llm.invoke(query)
         return response
