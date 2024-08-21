@@ -1,5 +1,4 @@
 import os
-import getpass
 import streamlit as st
 from ibm_watsonx_ai import Credentials
 from dotenv import load_dotenv
@@ -55,10 +54,42 @@ qa = RetrievalQA.from_chain_type(llm=watsonx_granite, chain_type="stuff", retrie
 
 st.title("Kubernetes Operator Assistant")
 
-query = st.text_input("Ask a question about Kubernetes operators:", "What is Rose? Where do Rose and Chen work? Can Rose work?")
+# Step-by-step tabs
+level1 = "Level 1 Operator"
+level2 = "Level 2 Operator"
+level3 = "Level 3 Operator"
+level4 = "Level 4 Operator"
+level5 = "Level 5 Operator"
 
-if st.button("Get Answer"):
-    with st.spinner('Processing...'):
-        response = qa.invoke(query)
-        st.write("### Answer")
-        st.write(response['result'])  # Ensure that 'result' is the correct key for your output
+levels = [level1, level2, level3, level4, level5]
+
+one, two, three, four, five = st.tabs(levels)
+
+# level 1: Ask a question and unlock level 2
+with one:
+    query = st.text_input("Ask a question about Kubernetes operators:", "What is Rose? Where do Rose and Chen work? Can Rose work?")
+    query_submitted = st.button("Get Answer")
+    st.session_state["one"] = True
+    
+    if query_submitted and query:
+        with st.spinner('Processing...'):
+            response = qa.invoke(query)
+            st.session_state['response'] = response['result']
+            st.write("### Answer")
+            st.write(st.session_state['response'])
+
+# level 2: 
+with two:
+    st.write("level 2 operator")
+
+# level 3: 
+with three:
+    st.write("level 3 operator")
+    
+# level 4: 
+with four:
+    st.write("level 4 operator")
+    
+# level 5: 
+with five:
+    st.write("level 5 operator")
