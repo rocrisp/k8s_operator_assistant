@@ -1,38 +1,46 @@
-from langchain_community.document_loaders import WebBaseLoader
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain.embeddings import SentenceTransformerEmbeddings
-from langchain_community.vectorstores import Chroma
+import os
+from langchain.document_loaders import TextLoader
+from langchain.text_splitter import CharacterTextSplitter
+from langchain.vectorstores import Chroma
+from langchain_ibm import WatsonxEmbeddings
+from ibm_watsonx_ai.metanames import EmbedTextParamsMetaNames as EmbedParams
+from ibm_watsonx_ai.foundation_models.utils.enums import EmbeddingTypes
 
-class Retriever:
-    def __init__(self, urls):
-        self.urls = urls
-        self.documents = self._load_documents_from_urls(urls)
-        self.splits = self._split_docs(self.documents)
-        self.embeddings = SentenceTransformerEmbeddings(model_name="all-MiniLM-L6-v2")
-        self.vectorstore = self._populate_vectorstore(self.splits)
-        #self.retriever = self.vectorstore.as_retriever()
+def setup_retriever(directory_path, credentials, project_id):
+    # Initialize an empty list to store all text chunks
+    all_texts = []
 
-    def _load_documents_from_urls(self, urls):
-        data = []
-        for url in urls:
-            loader = WebBaseLoader(url)
-            page = loader.load()
-            page[0].page_content = page[0].page_content.replace('\n', '')
-            data.extend(page)
-        return data
+    # Process each text file in the directory
+    for filename in os.listdir(directory_path):
+        if filename.endswith(".txt"):
+            # Load the text file
+            filepath = os.path.join(directory_path, filename)
+            loader = TextLoader(filepath)
+            documents = loader.load()
 
-    def _split_docs(self, data):
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=0)
-        return text_splitter.split_documents(data)
+            # Split the text into chunks
+            text_splitter = CharacterTextSplitter(chunk_size=1300, chunk_overlap=0)
+            texts = text_splitter.split_documents(documents)
+        
+            # Add the text chunks to the list
+            all_texts.extend(texts)
 
-    def _populate_vectorstore(self, splits):
-        vectorstore = Chroma.from_documents(
-            documents=splits,
-            collection_name="rag-chroma",
-            embedding=self.embeddings,
-        )
-        return vectorstore
+    embed_params = {
+        EmbedParams.TRUNCATE_INPUT_TOKENS: 128,
+        EmbedParams.RETURN_OPTIONS: {
+            'input_text': True
+        }
+    }
 
-    def retrieve(self, query, k=5):
-        results = self.vectorstore.similarity_search(query, k=k)
-        return "\n".join([result.page_content for result in results])
+    embeddings = WatsonxEmbeddings(
+        model_id=EmbeddingTypes.IBM_SLATE_30M_ENG.value,
+        url=credentials["url"],
+        params=embed_params,
+        apikey=credentials["apikey"],
+        project_id=project_id
+    )
+
+    # Create the Chroma vector store with the embeddings
+    docsearch = Chroma.from_documents(all_texts, embeddings)
+
+    return docsearch.as_retriever()

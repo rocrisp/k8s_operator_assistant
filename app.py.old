@@ -1,0 +1,167 @@
+import streamlit as st
+from agents.operator_agent import OperatorAgent
+from retrieval.retriever import Retriever
+from langchain.llms import Ollama
+from langchain.prompts import ChatPromptTemplate
+from langchain.schema.runnable import RunnablePassthrough
+from langchain.schema.output_parser import StrOutputParser
+from langchain_ibm import WatsonxEmbeddings, WatsonxLLM
+from ibm_watsonx_ai import Credentials
+from langchain.chains import RetrievalQA
+import os
+
+import debugpy
+
+# pylint: disable=invalid-name
+markdown = st.markdown(
+"""
+## Ready to attach the VS Code Debugger!
+![Python: Remote Attach](https://awesome-streamlit.readthedocs.io/en/latest/_images/vscode_python_remote_attach.png)
+for more info see the [VS Code section at awesome-streamlit.readthedocs.io]
+(https://awesome-streamlit.readthedocs.io/en/latest/vscode.html#integrated-debugging)
+"""
+)
+
+if not debugpy.is_client_connected():
+    debugpy.listen(5679)
+    debugpy.wait_for_client()
+
+markdown.empty()
+
+
+# Initialize the agent
+operator_agent = OperatorAgent()
+
+# List of URLs to load documents from
+urls = [
+    #"https://www.redhat.com/rhdc/managed-files/cl-oreilly-kubernetes-operators-ebook-f21452-202001-en_2.pdf",
+    # "https://examples.openshift.pub/operators/",
+    # "https://www.redhat.com/rhdc/managed-files/cm-oreilly-kubernetes-patterns-ebook-f19824-201910-en_0.pdf",
+    # "https://github.com/PacktPublishing/The-Kubernetes-Operator-Framework-Book",
+    # "https://github.com/fabric8io/kubernetes-client/blob/main/doc/CHEATSHEET.md",
+    # "https://gist.github.com/rafaeltuelho/111850b0db31106a4d12a186e1fbc53e",
+    # "https://docs.redhat.com/en/documentation/openshift_container_platform/4.3/pdf/operators/OpenShift_Container_Platform-4.3-Operators-en-US.pdf",
+    # "https://sdk.operatorframework.io/docs/building-operators/golang/quickstart/",
+]
+
+# Check if the API key is set as an environment variable
+api_key = os.getenv('WATSONX_APIKEY')
+project_key = os.getenv("WATSONX_PROJECTKEY")
+
+credentials = Credentials(
+    url="https://us-south.ml.cloud.ibm.com",
+    api_key=api_key,
+)
+
+# Initialize retriever
+path="/Users/rosecrisp/k8s_operator_assistant/docs/"
+retriever = Retriever(path)
+
+# Setup RAG chain
+#ollama = Ollama(base_url="http://localhost:11434", model="autopilot")
+model_selection ="mistralai/mixtral-8x7b-instruct-v01"
+        
+parameters = {
+    "decoding_method": "GREEDY",
+    "max_new_tokens": 100,
+    "min_new_tokens": 1,
+}
+
+
+watsonx_granite = WatsonxLLM(
+    model_id=model_selection,
+    url="https://us-south.ml.cloud.ibm.com",
+    project_id=project_key,
+    apikey=credentials.get("apikey"),
+    params=parameters,
+    streaming=True
+)
+
+docsearch = retriever.get_docsearch()
+qa = RetrievalQA.from_chain_type(llm=watsonx_granite, chain_type="stuff", retriever=docsearch.as_retriever())
+st.title("Kubernetes Operator Assistant")
+query = st.text_input("Ask a question about Kubernetes operators:", "Give me instructions on how to create a Kubernetes operator with deployment of a busybox?")
+print(query)
+if st.button("Get Answer"):
+    print("button clicked")
+    if query:
+        print("in query block")
+        response = qa.invoke(query)
+        if 'result' in response:
+            st.write("### Answer")
+            st.write(response['result']) # Assuming the result is in the 'result' key
+
+# query = "give me intructions on how to create a kubernetes operator with deployment of a busy box?"
+
+# qa.invoke(query)
+
+# template = """Answer the question only from the following context:
+# {context}
+
+# Question: {question}
+# """
+# prompt = ChatPromptTemplate.from_template(template)
+
+# rag_chain = (
+#     {"context": retriever.retrieve, "question": RunnablePassthrough()}
+#     | prompt
+#     | ollama
+#     | StrOutputParser()
+# )
+
+# rag_chain = RunnableSequence(
+#     retriever.retrieve,
+#     RunnablePassthrough(),
+#     prompt,
+#     ollama,
+#     StrOutputParser()
+# )
+
+
+# if 'step' not in st.session_state:
+#     st.session_state.step = 1
+
+# if st.session_state.step == 1:
+#     kind = st.text_input("Enter the kind of operator (e.g., Memcache):")
+#     if st.button("Next", key='next1'):
+#         st.session_state.kind = kind
+#         st.session_state.step = 2
+
+# if st.session_state.step == 2:
+#     services = st.text_area("Enter the resources (e.g., secrets, deployment, configmap):")
+#     if st.button("Next", key='next2'):
+#         st.session_state.services = [service.strip() for service in services.split(',')]
+#         st.session_state.step = 3
+
+# if st.session_state.step == 3:
+#     application = st.text_input("Enter the application the reconciler should deploy:")
+#     if st.button("Generate Operator Code", key='generate'):
+#         st.session_state.application = application
+#         operator_code = operator_agent.generate_operator(st.session_state.kind, st.session_state.services, st.session_state.application)
+#         st.code(operator_code, language='go')
+
+# if st.session_state.step == 3:
+#     application = st.text_input("Enter the application the reconciler should deploy:")
+#     if st.button("Generate Operator Code", key='generate'):
+#         st.session_state.application = application
+#         question = f"Generate operator code for kind={st.session_state.kind}, services={st.session_state.services}, application={st.session_state.application}"
+#         context = retriever.retrieve(question)
+#         #response = rag_chain({"context": context, "question": question})
+#         response=rag_chain.execute({"context": context, "question": question})
+#         st.code(response, language='go')
+
+#     question = st.text_input("Ask a question about the Kubernetes operator:")
+#     if question:
+#         context = retriever.retrieve(question)
+#         response = rag_chain({"context": context, "question": question})
+#         st.write(response)
+        
+# if st.session_state.step == 3:
+#     query = f"Generate a Kubernetes operator for {st.session_state.kind} that manages {', '.join(st.session_state.services)}"
+#     response = rag_chain.invoke(query)
+#     st.code(response, language='go')
+#     if st.button("Start Over", key='start_over'):
+#         st.session_state.step = 1
+#         st.session_state.kind = None
+#         st.session_state.services = None
+#         st.session_state.application

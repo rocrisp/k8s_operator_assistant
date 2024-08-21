@@ -1,0 +1,4 @@
+rose is a flower
+chen is a boy
+
+and they both work at redhat

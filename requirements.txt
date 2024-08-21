@@ -1,6 +1,7 @@
 streamlit
-langchain
+langchain_ibm
 langchain_community
 faiss-cpu
 sentence-transformers
 chromadb
+debugpy

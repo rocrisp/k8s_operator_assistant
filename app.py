@@ -1,91 +1,64 @@
+import os
+import getpass
 import streamlit as st
-from agents.operator_agent import OperatorAgent
-from retrieval.retriever import Retriever
-from langchain.llms import Ollama
-from langchain.prompts import ChatPromptTemplate
-from langchain.schema.runnable import RunnablePassthrough
-from langchain.schema.output_parser import StrOutputParser
+from ibm_watsonx_ai import Credentials
+from dotenv import load_dotenv
+from langchain_ibm import WatsonxLLM
+from langchain.chains import RetrievalQA
+from ibm_watsonx_ai.metanames import GenTextParamsMetaNames as GenParams
+from ibm_watsonx_ai.foundation_models.utils.enums import DecodingMethods, ModelTypes
+from retrieval.retriever import setup_retriever
 
-# Initialize the agent
-operator_agent = OperatorAgent()
+# Load environment variables from the .env file
+load_dotenv()
 
-# List of URLs to load documents from
-urls = [
-    "https://www.redhat.com/rhdc/managed-files/cl-oreilly-kubernetes-operators-ebook-f21452-202001-en_2.pdf",
-    "https://examples.openshift.pub/operators/",
-    "https://www.redhat.com/rhdc/managed-files/cm-oreilly-kubernetes-patterns-ebook-f19824-201910-en_0.pdf",
-    "https://github.com/PacktPublishing/The-Kubernetes-Operator-Framework-Book",
-    "https://github.com/fabric8io/kubernetes-client/blob/main/doc/CHEATSHEET.md",
-    "https://gist.github.com/rafaeltuelho/111850b0db31106a4d12a186e1fbc53e",
-    "https://docs.redhat.com/en/documentation/openshift_container_platform/4.3/pdf/operators/OpenShift_Container_Platform-4.3-Operators-en-US.pdf",
-    "https://sdk.operatorframework.io/docs/building-operators/golang/quickstart/",
-]
+# Check if the API key is set as an environment variable
+api_key = os.getenv('WATSONX_APIKEY')
 
-# Initialize retriever
-retriever = Retriever(urls)
+# If the API key is not found in the environment, exit
+if not api_key:
+    exit("Please set the WATSONX_APIKEY environment variable")
 
-# Setup RAG chain
-ollama = Ollama(base_url="http://localhost:11434", model="autopilot")
-
-template = """Answer the question only from the following context:
-{context}
-
-Question: {question}
-"""
-prompt = ChatPromptTemplate.from_template(template)
-
-rag_chain = (
-    {"context": retriever.retrieve, "question": RunnablePassthrough()}
-    | prompt
-    | ollama
-    | StrOutputParser()
+credentials = Credentials(
+    url="https://us-south.ml.cloud.ibm.com",
+    api_key=api_key,
 )
+
+# Check if the project_id is set as an environment variable
+project_id = os.getenv('WATSONX_PROJECTKEY')
+
+# If the project_id is not found in the environment, exit
+if not project_id:
+    exit("Please set the WATSONX_PROJECTKEY environment variable")
+
+# Setup the retriever
+retriever = setup_retriever('/Users/rosecrisp/k8s_operator_assistant/docs/', credentials, project_id)
+
+model_id = ModelTypes.GRANITE_13B_CHAT_V2
+
+parameters = {
+    GenParams.DECODING_METHOD: DecodingMethods.GREEDY,
+    GenParams.MIN_NEW_TOKENS: 1,
+    GenParams.MAX_NEW_TOKENS: 100,
+    GenParams.STOP_SEQUENCES: ["sequence1", "sequence2", "sequence3", "sequence4"]
+}
+
+watsonx_granite = WatsonxLLM(
+    model_id=model_id.value,
+    url=credentials.get("url"),
+    apikey=credentials.get("apikey"),
+    project_id=project_id,
+    params=parameters
+)
+
+qa = RetrievalQA.from_chain_type(llm=watsonx_granite, chain_type="stuff", retriever=retriever)
 
 st.title("Kubernetes Operator Assistant")
 
-if 'step' not in st.session_state:
-    st.session_state.step = 1
+query = st.text_input("Ask a question about Kubernetes operators:", "What is Rose? Where do Rose and Chen work? Can Rose work?")
 
-if st.session_state.step == 1:
-    kind = st.text_input("Enter the kind of operator (e.g., Memcache):")
-    if st.button("Next", key='next1'):
-        st.session_state.kind = kind
-        st.session_state.step = 2
-
-if st.session_state.step == 2:
-    services = st.text_area("Enter the resources (e.g., secrets, deployment, configmap):")
-    if st.button("Next", key='next2'):
-        st.session_state.services = [service.strip() for service in services.split(',')]
-        st.session_state.step = 3
-
-# if st.session_state.step == 3:
-#     application = st.text_input("Enter the application the reconciler should deploy:")
-#     if st.button("Generate Operator Code", key='generate'):
-#         st.session_state.application = application
-#         operator_code = operator_agent.generate_operator(st.session_state.kind, st.session_state.services, st.session_state.application)
-#         st.code(operator_code, language='go')
-
-if st.session_state.step == 3:
-    application = st.text_input("Enter the application the reconciler should deploy:")
-    if st.button("Generate Operator Code", key='generate'):
-        st.session_state.application = application
-        question = f"Generate operator code for kind={st.session_state.kind}, services={st.session_state.services}, application={st.session_state.application}"
-        context = retriever.retrieve(question)
-        response = rag_chain({"context": context, "question": question})
-        st.code(response, language='go')
-
-    question = st.text_input("Ask a question about the Kubernetes operator:")
-    if question:
-        context = retriever.retrieve(question)
-        response = rag_chain({"context": context, "question": question})
-        st.write(response)
-        
-# if st.session_state.step == 3:
-#     query = f"Generate a Kubernetes operator for {st.session_state.kind} that manages {', '.join(st.session_state.services)}"
-#     response = rag_chain.invoke(query)
-#     st.code(response, language='go')
-#     if st.button("Start Over", key='start_over'):
-#         st.session_state.step = 1
-#         st.session_state.kind = None
-#         st.session_state.services = None
-#         st.session_state.application
+if st.button("Get Answer"):
+    with st.spinner('Processing...'):
+        response = qa.invoke(query)
+        st.write("### Answer")
+        st.write(response['result'])  # Ensure that 'result' is the correct key for your output
